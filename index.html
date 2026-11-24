@@ -10,13 +10,6 @@
   html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
   canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; opacity: 0; transition: opacity 1.4s ease; }
   canvas#scene.on { opacity: 1; }
-  #hint {
-    position: fixed; left: 22px; bottom: 18px; z-index: 2; pointer-events: none;
-    font: 500 11px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    letter-spacing: .14em; text-transform: uppercase; color: rgba(20,28,28,.72);
-    transition: opacity 1.6s ease; opacity: 0;
-  }
-  #hint.on { opacity: 1; }
   #fps { position: fixed; right: 12px; top: 10px; z-index: 3; font: 11px ui-monospace, monospace; color: #8f8; display: none; pointer-events: none; }
   noscript { position: fixed; inset: 0; display: grid; place-items: center; color: #ccc; font: 14px sans-serif; }
 </style>
@@ -31,7 +24,6 @@
 </head>
 <body>
 <canvas id="scene"></canvas>
-<div id="hint">двигайте курсор &nbsp;·&nbsp; зажмите, чтобы притянуть ртуть</div>
 <div id="fps"></div>
 <noscript>Нужен JavaScript и WebGL2.</noscript>
 <script type="module" src="./js/main.js"></script>

@@ -19,8 +19,8 @@ export function createBackground() {
         // плёночное зерно + дизеринг против бэндинга
         float g = hash(gl_FragCoord.xy) - 0.5;
         c += g * (1.4 / 255.0) + g * 0.012 * c;
-        gl_FragColor = vec4(c, 1.0);
-        // уже в display-пространстве: цветовое преобразование не нужно
+        gl_FragColor = vec4(pow(max(c, 0.0), vec3(2.2)), 1.0);
+        #include <colorspace_fragment>
       }
     `,
   });

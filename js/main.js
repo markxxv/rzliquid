@@ -7,6 +7,10 @@ import { GlassPanes } from './glass.js';
 import { Wires } from './wires.js';
 import { Floaters } from './floaters.js';
 import { Input } from './input.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { FXAAPass } from 'three/addons/postprocessing/FXAAPass.js';
 
 const params = new URLSearchParams(location.search);
 const STILL = params.has('still');
@@ -49,19 +53,21 @@ const floaters = new Floaters(envUniforms);
 scene.add(bg, glass.group, mercury.mesh, wires.group, floaters.group);
 
 const input = new Input(canvas);
-const hint = document.getElementById('hint');
-if (hint && !STILL) {
-  setTimeout(() => hint.classList.add('on'), 1800);
-  const hide = () => hint.classList.remove('on');
-  input.onFirst = () => setTimeout(hide, 3500);
-  setTimeout(hide, 12000);
-}
 
+// MSAA-таргет + FXAA: сглаживает и края шейдерной ртути, и проволоку, и стёкла
+const rt = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: 4 });
+const composer = new EffectComposer(renderer, rt);
+composer.addPass(new RenderPass(scene, camera));
+composer.addPass(new OutputPass());
+const fxaa = new FXAAPass();
+composer.addPass(fxaa);
 /* ── размер / композиция ── */
 function resize() {
   const w = window.innerWidth, h = window.innerHeight;
   renderer.setPixelRatio(pr);
   renderer.setSize(w, h, false);
+  composer.setPixelRatio(pr);
+  composer.setSize(w, h);
   const aspect = w / h;
   camera.aspect = aspect;
   // вся композиция 16:9 целиком; на узких экранах показываем центральную часть
@@ -122,7 +128,7 @@ function frame(rawDt, draw = true) {
   glass.update(T, input);
   wires.update(dt, T, input);
   floaters.update(dt, T, input, mercury);
-  if (draw) renderer.render(scene, camera);
+  if (draw) composer.render();
   if (draw && !shown) { shown = true; requestAnimationFrame(() => canvas.classList.add('on')); }
 }
 
