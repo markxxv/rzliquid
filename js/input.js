@@ -61,16 +61,18 @@ export class Input {
     }
     if (target) {
       if (this._smooth.x > 50) this._smooth.copy(target);
-      this._smooth.lerp(target, 1 - Math.exp(-dt * 22));
+      this._smooth.lerp(target, 1 - Math.exp(-dt * 14));
       this.world.copy(this._smooth);
     } else {
       this.world.set(99, 99, 0); this._smooth.set(99, 99, 0);
     }
     this.influence += (infl - this.influence) * (1 - Math.exp(-dt * 6));
     if (this.prev.x < 50 && this.world.x < 50 && dt > 0) {
-      this.vel.set((this.world.x - this.prev.x) / dt, (this.world.y - this.prev.y) / dt);
-      const m = this.vel.length(); if (m > 9) this.vel.multiplyScalar(9 / m);
-    } else this.vel.set(0, 0);
+      const k = 1 - Math.exp(-dt * 14);
+      this.vel.x += ((this.world.x - this.prev.x) / dt - this.vel.x) * k;
+      this.vel.y += ((this.world.y - this.prev.y) / dt - this.vel.y) * k;
+      const m = this.vel.length(); if (m > 7) this.vel.multiplyScalar(7 / m);
+    } else this.vel.multiplyScalar(Math.exp(-dt * 10));
     this.speed += (this.vel.length() - this.speed) * (1 - Math.exp(-dt * 12));
     this.prev.copy(this.world);
 

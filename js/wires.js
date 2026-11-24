@@ -13,8 +13,8 @@ function fan(pts, n, spread, w, opt = {}) {
     const q = pts.map((p, i) => {
       const a = pts[Math.max(0, i - 1)], b = pts[Math.min(L - 1, i + 1)];
       let tx = b[0] - a[0], ty = b[1] - a[1]; const m = Math.hypot(tx, ty) || 1; tx /= m; ty /= m;
-      const f = 0.55 + 0.45 * (i / (L - 1)) + (rnd() - 0.5) * 0.25;
-      return [p[0] - ty * off * f + (rnd() - 0.5) * 9, p[1] + tx * off * f + (rnd() - 0.5) * 9];
+      const f = 0.55 + 0.45 * (i / (L - 1));
+      return [p[0] - ty * off * f, p[1] + tx * off * f];
     });
     out.push({ pts: q, w: w * (0.85 + rnd() * 0.35), ...opt });
   }
@@ -45,7 +45,9 @@ const STRANDS = [
   ...fan([[1090, 960], [1110, 1050], [1090, 1170]], 5, 10, 2.4, { zr: -0.12, zt: -0.1, soft: 1.4, fiber: true }),
 ];
 
-const M = 26;            // узлов на нить
+const M = 22;            // узлов физики на нить
+const SUB = 4;           // подвыборок Catmull-Rom на звено при рендере
+const NS = (M - 1) * SUB + 1;
 const RADIAL = 5;        // вершин поперёк ленты
 
 const vert = /* glsl */ `
@@ -80,8 +82,9 @@ class Group {
     this.vel = new Float32Array(total * 3);
     this.home = new Float32Array(total * 3);
     this.rest = new Float32Array(this.n * (M - 1));
-    this.vpos = new Float32Array(total * RADIAL * 3);
-    this.vnor = new Float32Array(total * RADIAL * 3);
+    this.vpos = new Float32Array(this.n * NS * RADIAL * 3);
+    this.vnor = new Float32Array(this.n * NS * RADIAL * 3);
+    this.sx = new Float32Array(NS); this.sy = new Float32Array(NS); this.sz = new Float32Array(NS);
     this.half = strands.map((s) => wr(s.w * 2.2) / 2);
 
     strands.forEach((s, si) => {
@@ -96,8 +99,8 @@ class Group {
     });
 
     const idx = [];
-    for (let si = 0; si < this.n; si++) for (let i = 0; i < M - 1; i++) for (let j = 0; j < RADIAL - 1; j++) {
-      const a = (si * M + i) * RADIAL + j, b = (si * M + i + 1) * RADIAL + j;
+    for (let si = 0; si < this.n; si++) for (let i = 0; i < NS - 1; i++) for (let j = 0; j < RADIAL - 1; j++) {
+      const a = (si * NS + i) * RADIAL + j, b = (si * NS + i + 1) * RADIAL + j;
       idx.push(a, a + 1, b, a + 1, b + 1, b);
     }
     this.geo = new THREE.BufferGeometry();
@@ -124,14 +127,10 @@ class Group {
       const ph = si * 1.37;
       for (let i = 1; i < M; i++) {
         const o = (si * M + i) * 3, s = i / (M - 1);
-        const k = (150 / st.soft) * (1 - s) + (7 / st.soft) * s + 2;
-        let ax = (home[o] - pos[o]) * k - vel[o] * 2.4;
-        let ay = (home[o + 1] - pos[o + 1]) * k - vel[o + 1] * 2.4;
-        let az = (home[o + 2] - pos[o + 2]) * k - vel[o + 2] * 2.4;
-        // изгибная жёсткость
-        const p0 = o - 3, p1 = i < M - 1 ? o + 3 : o;
-        ax += ((pos[p0] + pos[p1]) * 0.5 - pos[o]) * 55;
-        ay += ((pos[p0 + 1] + pos[p1 + 1]) * 0.5 - pos[o + 1]) * 55;
+        const k = (70 / st.soft) * (1 - s) + (4 / st.soft) * s + 1.5;
+        let ax = (home[o] - pos[o]) * k - vel[o] * 4.2;
+        let ay = (home[o + 1] - pos[o + 1]) * k - vel[o + 1] * 4.2;
+        let az = (home[o + 2] - pos[o + 2]) * k - vel[o + 2] * 4.2;
         // медленный «дрейф в невесомости»
         const a = 0.22 * idle * s;
         ax += Math.sin(t * 0.8 + ph + i * 0.35) * a * 0.9;
@@ -141,14 +140,22 @@ class Group {
           const rx = pos[o] - m.x, ry = pos[o + 1] - m.y;
           const d2 = rx * rx + ry * ry, d = Math.sqrt(d2) + 1e-4;
           const fo = Math.exp(-d2 / (2 * 0.2 * 0.2)) * infl;
-          ax += (rx / d) * 34 * fo + (mv.x * 0.7 - vel[o]) * 4 * fo;
-          ay += (ry / d) * 34 * fo + (mv.y * 0.7 - vel[o + 1]) * 4 * fo;
+          ax += (rx / d) * 20 * fo + (mv.x * 0.6 - vel[o]) * 3 * fo;
+          ay += (ry / d) * 20 * fo + (mv.y * 0.6 - vel[o + 1]) * 3 * fo;
         }
         vel[o] += ax * dt; vel[o + 1] += ay * dt; vel[o + 2] += az * dt;
       }
       for (let i = 1; i < M; i++) {
         const o = (si * M + i) * 3;
         pos[o] += vel[o] * dt; pos[o + 1] += vel[o + 1] * dt; pos[o + 2] += vel[o + 2] * dt;
+      }
+      // сглаживание изгиба (позиционное, безусловно устойчивое)
+      for (let i = 1; i < M - 1; i++) {
+        const o = (si * M + i) * 3;
+        for (let c = 0; c < 3; c++) {
+          const avg = (pos[o - 3 + c] + pos[o + 3 + c]) * 0.5;
+          pos[o + c] += (avg - pos[o + c]) * 0.35;
+        }
       }
       // длина нити сохраняется
       for (let it = 0; it < 2; it++) for (let i = 1; i < M; i++) {
@@ -163,24 +170,36 @@ class Group {
   }
 
   build() {
-    const { pos, vpos, vnor } = this;
+    const { pos, vpos, vnor, sx, sy, sz } = this;
     for (let si = 0; si < this.n; si++) {
       const hw = this.half[si];
-      for (let i = 0; i < M; i++) {
-        const o = (si * M + i) * 3;
-        const a = (si * M + Math.max(0, i - 1)) * 3, b = (si * M + Math.min(M - 1, i + 1)) * 3;
-        let tx = pos[b] - pos[a], ty = pos[b + 1] - pos[a + 1];
+      const base = si * M;
+      for (let i = 0; i < M - 1; i++) {
+        const i0 = base + Math.max(0, i - 1), i1 = base + i, i2 = base + i + 1, i3 = base + Math.min(M - 1, i + 2);
+        for (let k = 0; k < SUB; k++) {
+          const u = k / SUB, u2 = u * u, u3 = u2 * u, idx = i * SUB + k;
+          const c0 = -0.5 * u3 + u2 - 0.5 * u, c1 = 1.5 * u3 - 2.5 * u2 + 1, c2 = -1.5 * u3 + 2 * u2 + 0.5 * u, c3 = 0.5 * u3 - 0.5 * u2;
+          sx[idx] = pos[i0 * 3] * c0 + pos[i1 * 3] * c1 + pos[i2 * 3] * c2 + pos[i3 * 3] * c3;
+          sy[idx] = pos[i0 * 3 + 1] * c0 + pos[i1 * 3 + 1] * c1 + pos[i2 * 3 + 1] * c2 + pos[i3 * 3 + 1] * c3;
+          sz[idx] = pos[i0 * 3 + 2] * c0 + pos[i1 * 3 + 2] * c1 + pos[i2 * 3 + 2] * c2 + pos[i3 * 3 + 2] * c3;
+        }
+      }
+      const e = (base + M - 1) * 3;
+      sx[NS - 1] = pos[e]; sy[NS - 1] = pos[e + 1]; sz[NS - 1] = pos[e + 2];
+      for (let i = 0; i < NS; i++) {
+        const a = Math.max(0, i - 1), b = Math.min(NS - 1, i + 1);
+        let tx = sx[b] - sx[a], ty = sy[b] - sy[a];
         const m = Math.hypot(tx, ty) || 1; tx /= m; ty /= m;
-        const sx = -ty, sy = tx;
-        const taper = 0.55 + 0.45 * Math.min(1, (M - 1 - i) / 3 + 0.3) * Math.min(1, i / 2 + 0.4);
+        const px = -ty, py = tx;
+        const taper = 0.6 + 0.4 * Math.min(1, (NS - 1 - i) / 8 + 0.2) * Math.min(1, i / 6 + 0.4);
         for (let j = 0; j < RADIAL; j++) {
           const u = (j / (RADIAL - 1)) * 2 - 1;
-          const v = (si * M + i) * RADIAL + j, w = v * 3;
-          vpos[w] = pos[o] + sx * u * hw * taper;
-          vpos[w + 1] = pos[o + 1] + sy * u * hw * taper;
-          vpos[w + 2] = pos[o + 2];
+          const w = ((si * NS + i) * RADIAL + j) * 3;
+          vpos[w] = sx[i] + px * u * hw * taper;
+          vpos[w + 1] = sy[i] + py * u * hw * taper;
+          vpos[w + 2] = sz[i];
           const nz = Math.sqrt(Math.max(0, 1 - u * u));
-          vnor[w] = sx * u; vnor[w + 1] = sy * u; vnor[w + 2] = nz;
+          vnor[w] = px * u; vnor[w + 1] = py * u; vnor[w + 2] = nz;
         }
       }
     }
@@ -198,10 +217,8 @@ export class Wires {
     this.acc = 0;
   }
   update(dt, t, input) {
-    this.acc += dt;
-    const h = 1 / 90; let n = 0;
-    while (this.acc >= h && n < 6) { this.cables.step(h, t, input); this.fibers.step(h, t, input); this.acc -= h; n++; }
-    if (n === 6) this.acc = 0;
+    const n = Math.min(6, Math.max(1, Math.ceil(dt * 90))), h = dt / n;
+    for (let i = 0; i < n; i++) { this.cables.step(h, t, input); this.fibers.step(h, t, input); }
     this.cables.build(); this.fibers.build();
   }
 }

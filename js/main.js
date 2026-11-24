@@ -27,7 +27,7 @@ renderer.toneMapping = THREE.NoToneMapping;
 renderer.setClearColor(0x000000, 1);
 
 const maxPR = Math.min(window.devicePixelRatio || 1, 2);
-let pr = params.has('pr') ? parseFloat(params.get('pr')) : Math.min(maxPR, 1.25);
+let pr = params.has('pr') ? parseFloat(params.get('pr')) : Math.min(maxPR, 1.5);
 renderer.setPixelRatio(pr);
 
 /* ── сцена ── */
@@ -84,22 +84,31 @@ function updateEnv(t) {
 }
 
 /* ── адаптивное разрешение ── */
-let slow = 0, fast = 0, quality = 1;
+let slow = 0, fast = 0, quality = 2, sdt = 1 / 60;
 const fpsEl = document.getElementById('fps');
 if (params.has('debug') && fpsEl) fpsEl.style.display = 'block';
 let fpsAcc = 0, fpsN = 0;
 function adapt(dt) {
   if (STILL || params.has('pr')) return;
-  if (dt > 0.026) { slow++; fast = 0; } else if (dt < 0.0185) { fast++; slow = Math.max(0, slow - 1); } else { slow = Math.max(0, slow - 1); fast = 0; }
-  if (slow > 25) { slow = 0; if (quality > 0 && pr <= 0.85) quality = 0; if (pr > 0.55) { pr = Math.max(0.55, pr - 0.15); resize(); } }
-  else if (fast > 240) { fast = 0; if (pr < maxPR && quality > 0) { pr = Math.min(maxPR, pr + 0.1); resize(); } }
+  if (dt > 0.030) { slow++; fast = 0; } else if (dt < 0.019) { fast++; slow = Math.max(0, slow - 1); } else { slow = Math.max(0, slow - 1); fast = 0; }
+  if (slow > 45) {            // сначала упрощаем шейдер, и только потом режем разрешение
+    slow = 0;
+    if (quality > 0) quality--;
+    else if (pr > 0.8) { pr = Math.max(0.8, pr - 0.1); resize(); }
+  } else if (fast > 400) {
+    fast = 0;
+    if (pr < Math.min(maxPR, 1.5)) { pr = Math.min(maxPR, 1.5, pr + 0.1); resize(); }
+    else if (quality < 2) quality++;
+  }
 }
 
 /* ── цикл ── */
 let T = 0, shown = false;
 function pixSize() { return (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))) / renderer.domElement.height; }
 
-function frame(dt, draw = true) {
+function frame(rawDt, draw = true) {
+  sdt += (rawDt - sdt) * 0.15;
+  const dt = STILL ? rawDt : sdt;
   T += dt;
   // лёгкий параллакс камеры
   camera.position.x += (input.parallax.x * 0.16 - camera.position.x) * (1 - Math.exp(-dt * 3));

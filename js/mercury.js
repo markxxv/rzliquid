@@ -43,7 +43,7 @@ uniform vec4 uN[${NODES.length}];
 uniform vec4 uC[${SEGS.length}];
 uniform vec4 uS[3];
 uniform vec4 uB[${NB}];
-uniform float uFlat, uK, uKS, uKB, uTime, uBounce, uPix, uRipple, uWarp, uBand;
+uniform float uFlat, uK, uKS, uKB, uTime, uBounce, uPix, uRipple, uWarp, uBand, uSteps;
 uniform vec2 uMouse;
 uniform mat4 uInvViewProj, uViewProj;
 uniform vec3 uBoxMin, uBoxMax;
@@ -157,6 +157,7 @@ void main() {
   float t = max(tN, 0.0);
   float minR = 1e5, tMin = t; bool hit = false;
   for (int i = 0; i < 90; i++) {
+    if (float(i) > uSteps) break;
     float d = map(ro + rd * t);
     float pw = uPix * t;
     float ratio = d / pw;
@@ -223,7 +224,7 @@ export class Mercury {
       uS: { value: this.spheres.map(() => new THREE.Vector4()) },
       uB: { value: this.beads.map(() => new THREE.Vector4()) },
       uFlat: { value: 1.75 }, uK: { value: 0.075 }, uKS: { value: 0.05 }, uKB: { value: 0.042 },
-      uTime: { value: 0 }, uBounce: { value: 1 }, uWarp: { value: 0.2 }, uBand: { value: 0.30 }, uPix: { value: 0.001 }, uRipple: { value: 0 },
+      uTime: { value: 0 }, uBounce: { value: 1 }, uWarp: { value: 0.2 }, uSteps: { value: 72 }, uBand: { value: 0.30 }, uPix: { value: 0.001 }, uRipple: { value: 0 },
       uMouse: { value: new THREE.Vector2(99, 99) },
       uInvViewProj: { value: new THREE.Matrix4() }, uViewProj: { value: new THREE.Matrix4() },
       uBoxMin: { value: new THREE.Vector3() }, uBoxMax: { value: new THREE.Vector3() },
@@ -250,20 +251,20 @@ export class Mercury {
       const sway = 0.006 * idleAmp * (1.4 - n.k * 0.5);
       const hx = n.home.x + Math.sin(t * 0.55 + n.ph) * sway + Math.sin(t * 0.21 + n.ph * 2.1) * sway * 0.7;
       const hy = n.home.y + Math.cos(t * 0.47 + n.ph * 1.3) * sway + Math.cos(t * 0.19 + n.ph) * sway * 0.7;
-      const kh = 62 * (0.45 + 0.55 * n.k);
-      let ax = (hx - n.pos.x) * kh - n.vel.x * 5.2;
-      let ay = (hy - n.pos.y) * kh - n.vel.y * 5.2;
+      const kh = 38 * (0.45 + 0.55 * n.k);
+      let ax = (hx - n.pos.x) * kh - n.vel.x * 6.4;
+      let ay = (hy - n.pos.y) * kh - n.vel.y * 6.4;
 
       if (infl > 0.01) {
         const rx = n.pos.x - m.x, ry = n.pos.y - m.y;
         const d2 = rx * rx + ry * ry, d = Math.sqrt(d2) + 1e-4;
-        const sg = 0.17 + n.r0 * 0.9;
+        const sg = 0.24 + n.r0 * 1.1;
         const fo = Math.exp(-d2 / (2 * sg * sg)) * infl;
-        ax += (rx / d) * 46 * fo + (mv.x * 0.6 - n.vel.x) * 5.5 * fo;
-        ay += (ry / d) * 46 * fo + (mv.y * 0.6 - n.vel.y) * 5.5 * fo;
+        ax += (rx / d) * 26 * fo + (mv.x * 0.5 - n.vel.x) * 4.5 * fo;
+        ay += (ry / d) * 26 * fo + (mv.y * 0.5 - n.vel.y) * 4.5 * fo;
         if (input.down) {
           const sg2 = 0.5, f2 = Math.exp(-d2 / (2 * sg2 * sg2));
-          ax -= (rx / d) * 70 * f2; ay -= (ry / d) * 70 * f2;
+          ax -= (rx / d) * 44 * f2; ay -= (ry / d) * 44 * f2;
         }
         n.e = Math.min(1, n.e + fo * (0.4 + input.speed * 0.35) * dt * 2.2);
       }
@@ -278,6 +279,11 @@ export class Mercury {
       const wa = b.k / (a.k + b.k), wb = a.k / (a.k + b.k);
       a.vel.x += dx * f * wa; a.vel.y += dy * f * wa;
       b.vel.x -= dx * f * wb; b.vel.y -= dy * f * wb;
+    }
+    for (const l of this.links) {
+      const a = N[l.a], b = N[l.b];
+      const dx = ((b.vel.x - a.vel.x)) * 3.0 * dt, dy = ((b.vel.y - a.vel.y)) * 3.0 * dt;
+      a.vel.x += dx; a.vel.y += dy; b.vel.x -= dx; b.vel.y -= dy;
     }
     for (const n of N) {
       n.pos.x += n.vel.x * dt; n.pos.y += n.vel.y * dt;
@@ -294,9 +300,9 @@ export class Mercury {
       if (infl > 0.01) {
         const rx = s.pos.x - m.x, ry = s.pos.y - m.y;
         const d2 = rx * rx + ry * ry, d = Math.sqrt(d2) + 1e-4;
-        const sg = 0.2 + s.r * 0.8, fo = Math.exp(-d2 / (2 * sg * sg)) * infl;
-        ax += (rx / d) * 52 * fo + (mv.x * 0.5 - s.vel.x) * 3 * fo;
-        ay += (ry / d) * 52 * fo + (mv.y * 0.5 - s.vel.y) * 3 * fo;
+        const sg = 0.28 + s.r * 0.9, fo = Math.exp(-d2 / (2 * sg * sg)) * infl;
+        ax += (rx / d) * 30 * fo + (mv.x * 0.4 - s.vel.x) * 3 * fo;
+        ay += (ry / d) * 30 * fo + (mv.y * 0.4 - s.vel.y) * 3 * fo;
         if (input.down) {
           const sg2 = 0.55, f2 = Math.exp(-d2 / (2 * sg2 * sg2));
           ax -= (rx / d) * 38 * f2; ay -= (ry / d) * 38 * f2;
@@ -348,11 +354,8 @@ export class Mercury {
   }
 
   update(dt, t, input, camera, pixSize, quality) {
-    this.acc += dt;
-    const h = 1 / 120;
-    let steps = 0;
-    while (this.acc >= h && steps < 8) { this._step(h, t, input); this.acc -= h; steps++; }
-    if (steps === 8) this.acc = 0;
+    const steps = Math.min(8, Math.max(1, Math.ceil(dt * 120))), h = dt / steps;
+    for (let i = 0; i < steps; i++) this._step(h, t + (i - steps + 1) * h, input);
 
     // ripple
     const target = input.influence > 0.3 ? Math.min(1, input.speed * 0.35) : 0;
@@ -369,7 +372,7 @@ export class Mercury {
     this.beads.forEach((b, i) => u.uB.value[i].set(b.p.x, b.p.y, b.p.z, b.on ? b.r : 0));
     u.uTime.value = t; u.uRipple.value = this._ripple;
     u.uMouse.value.set(input.world.x, input.world.y);
-    u.uPix.value = pixSize; u.uBounce.value = quality > 0 ? 1 : 0;
+    u.uPix.value = pixSize; u.uBounce.value = quality > 1 ? 1 : 0; u.uSteps.value = quality > 0 ? 72 : 48;
 
     camera.updateMatrixWorld();
     this._m.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
